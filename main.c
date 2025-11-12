@@ -15,10 +15,9 @@ typedef struct s_subnet
 	t_ip		ip;
 	uint8_t		prefix;
 	uint8_t		host_bits;
-	uint16_t	block_size;
-	uint8_t		mask_last_octet;
-	uint16_t	network_octet4;
-	uint16_t	broadcast_octet4;
+	uint32_t	mask;
+	uint32_t	network;
+	uint32_t	broadcast;
 }				t_subnet;
 
 static int	read_u8(const char **p, uint8_t *v)
@@ -58,58 +57,53 @@ int	parse_ipv4(const char *s, t_subnet *out)
 	return (*p == '\0');
 }
 
-static uint16_t	calc_block_size(uint8_t prefix)
-{
-	uint8_t	rem;
-
-	rem = prefix % 8;
-	if (rem == 0)
-		return (256);
-	return (1u << (8 - rem));
-}
-
 void	calc_subnet(t_subnet *s)
 {
-	uint16_t	o4;
-	uint16_t	bs;
-	uint16_t	net4;
-	uint16_t	br4;
+	uint32_t	ip;
 
+	ip = (s->ip.o1 << 24) | (s->ip.o2 << 16) | (s->ip.o3 << 8) | s->ip.o4;
 	s->host_bits = 32 - s->prefix;
-	bs = calc_block_size(s->prefix);
-	s->block_size = bs;
-	s->mask_last_octet = 256 - bs;
-	o4 = s->ip.o4;
-	bs = s->block_size;
-	net4 = (o4 / bs) * bs;
-	br4 = net4 + (bs - 1);
-	s->network_octet4 = (uint8_t)(net4 & 0xFF);
-	s->broadcast_octet4 = (uint8_t)(br4 & 0xFF);
+	if (s->prefix == 0)
+		s->mask = 0;
+	else
+		s->mask = 0xFFFFFFFF << s->host_bits;
+	s->network = ip & s->mask;
+	s->broadcast = s->network | ~s->mask;
+}
+
+static uint8_t	get_octet(uint32_t value, int index)
+{
+	return ((value >> (8 * (3 - index))) & 0xFF);
 }
 
 void	print_subnet(const t_subnet *s)
 {
-	uint8_t	first;
-	uint8_t	last;
+	uint32_t	usable_hosts;
+	uint32_t	first;
+	uint32_t	last;
 
-	first = s->network_octet4 + 1;
-	last = s->broadcast_octet4 - 1;
+	usable_hosts = (s->host_bits >= 2) ? ((1u << s->host_bits) - 2) : 0;
+	first = s->network + 1;
+	last = s->broadcast - 1;
 	printf("IP:                  %u.%u.%u.%u\n", s->ip.o1, s->ip.o2, s->ip.o3,
 		s->ip.o4);
 	printf("PREFIX:              %u\n\n", s->prefix);
 	printf("HOST_BITS:           %u\n", s->host_bits);
-	printf("BLOCK_SIZE:          %u\n", s->block_size);
-	printf("MASK_LAST_OCTET:     %u\n", s->mask_last_octet);
-	printf("SUBNET_MASK:         255.255.255.%u\n\n", s->mask_last_octet);
-	printf("NETWORK:             %u.%u.%u.%u\n", s->ip.o1, s->ip.o2, s->ip.o3,
-		s->network_octet4);
-	printf("BROADCAST:           %u.%u.%u.%u\n", s->ip.o1, s->ip.o2, s->ip.o3,
-		s->broadcast_octet4);
-	if (s->block_size > 2)
+	printf("SUBNET_MASK:         %u.%u.%u.%u\n", get_octet(s->mask, 0),
+		get_octet(s->mask, 1), get_octet(s->mask, 2), get_octet(s->mask, 3));
+	printf("\nNETWORK:             %u.%u.%u.%u\n", get_octet(s->network, 0),
+		get_octet(s->network, 1), get_octet(s->network, 2),
+		get_octet(s->network, 3));
+	printf("BROADCAST:           %u.%u.%u.%u\n", get_octet(s->broadcast, 0),
+		get_octet(s->broadcast, 1), get_octet(s->broadcast, 2),
+		get_octet(s->broadcast, 3));
+	if (usable_hosts > 0)
 	{
-		printf("USABLE_RANGE:        %u.%u.%u.%u  ->  %u.%u.%u.%u\n", s->ip.o1,
-			s->ip.o2, s->ip.o3, first, s->ip.o1, s->ip.o2, s->ip.o3, last);
-		printf("USABLE_HOSTS:        %u\n", s->block_size - 2);
+		printf("USABLE_RANGE:        %u.%u.%u.%u  ->  %u.%u.%u.%u\n",
+			get_octet(first, 0), get_octet(first, 1), get_octet(first, 2),
+			get_octet(first, 3), get_octet(last, 0), get_octet(last, 1),
+			get_octet(last, 2), get_octet(last, 3));
+		printf("USABLE_HOSTS:        %u\n", usable_hosts);
 	}
 	else
 	{
