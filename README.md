@@ -46,7 +46,7 @@ USABLE_HOSTS:        4094
 Compile:
 
 ```bash
-cc -Wall -Wextra -Werror main.c -o subnetcalc
+make
 ```
 
 Run:
